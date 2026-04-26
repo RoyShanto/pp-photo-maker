@@ -15,4 +15,4 @@ MarkupSafe
 requests==2.32.4
 python-dotenv
 pillow
-rembg
+rembg[cpu]
