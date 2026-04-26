@@ -334,13 +334,15 @@
       cropperModal.classList.remove('hidden');
       
       const urlToCrop = photo.originalUrl || photo.previewUrl;
+      const targetW = parseInt(document.getElementById('width').value) || 390;
+      const targetH = parseInt(document.getElementById('height').value) || 480;
       
       if (activeCropper) {
         activeCropper.replace(urlToCrop);
       } else {
         cropModalImage.src = urlToCrop;
         activeCropper = new Cropper(cropModalImage, {
-          aspectRatio: 384 / 472,
+          aspectRatio: targetW / targetH,
           viewMode: 1,
           dragMode: 'move',
           autoCropArea: 1,
@@ -350,7 +352,9 @@
 
     confirmCropBtn.addEventListener('click', () => {
       if (!activeCropper || pendingCropId === null) return;
-      const canvas = activeCropper.getCroppedCanvas({ width: 400, height: 480 });
+      const targetW = parseInt(document.getElementById('width').value) || 390;
+      const targetH = parseInt(document.getElementById('height').value) || 480;
+      const canvas = activeCropper.getCroppedCanvas();
       canvas.toBlob(blob => {
         const photo = photos.find(p => p.id === pendingCropId);
         if (!photo) return;
