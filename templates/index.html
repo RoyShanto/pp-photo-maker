@@ -411,21 +411,62 @@
           if (response.status === 410) { showNotification("Cannot Detect Face/Background in one of the images."); return null; }
           if (response.status === 500) { showNotification("Internal Error, try again later."); return null; }
           if (!response.ok) throw new Error("Processing failed.");
-          return response.blob();
+          return response.json();
         })
-        .then(blob => {
-          if (!blob) return;
-          const url = URL.createObjectURL(blob);
+        .then(data => {
+          if (!data || data.error) throw new Error(data.error || "Processing failed.");
+          
+          // Decode PDF
+          const pdfData = atob(data.pdf);
+          const pdfArray = new Uint8Array(pdfData.length);
+          for (let i = 0; i < pdfData.length; i++) {
+            pdfArray[i] = pdfData.charCodeAt(i);
+          }
+          const pdfBlob = new Blob([pdfArray], {type: 'application/pdf'});
+          const pdfUrl = URL.createObjectURL(pdfBlob);
+          pdfPreview.src = pdfUrl;
           pdfPreview.classList.remove('hidden');
-          pdfPreview.src = url;
+
           downloadBtn.classList.remove('hidden');
           downloadBtn.onclick = () => {
             const link = document.createElement('a');
-            link.href = url;
+            link.href = pdfUrl;
             link.download = 'passport-sheet.pdf';
             link.click();
           };
-          showNotification("PDF generated successfully!", false);
+
+          // Decode Images and create buttons
+          let imagesContainer = document.getElementById('processedImagesContainer');
+          if (!imagesContainer) {
+            imagesContainer = document.createElement('div');
+            imagesContainer.id = 'processedImagesContainer';
+            imagesContainer.className = 'mt-4 flex flex-wrap gap-4 justify-center w-full';
+            downloadBtn.parentNode.appendChild(imagesContainer);
+          }
+          imagesContainer.innerHTML = '';
+          
+          data.images.forEach((imgB64, idx) => {
+            const imgData = atob(imgB64);
+            const imgArray = new Uint8Array(imgData.length);
+            for (let i = 0; i < imgData.length; i++) {
+              imgArray[i] = imgData.charCodeAt(i);
+            }
+            const imgBlob = new Blob([imgArray], {type: 'image/png'});
+            const imgUrl = URL.createObjectURL(imgBlob);
+            
+            const btn = document.createElement('button');
+            btn.className = 'bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg transition-all transform hover:scale-105 shadow-md';
+            btn.textContent = data.images.length > 1 ? `Download Photo ${idx + 1}` : 'Download Photo';
+            btn.onclick = () => {
+              const link = document.createElement('a');
+              link.href = imgUrl;
+              link.download = `processed-photo-${idx + 1}.png`;
+              link.click();
+            };
+            imagesContainer.appendChild(btn);
+          });
+
+          showNotification("Processed successfully!", false);
         })
         .catch(err => {
           console.error(err);

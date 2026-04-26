@@ -1,4 +1,5 @@
-from flask import Flask, request, render_template, send_file
+import base64
+from flask import Flask, request, render_template, send_file, jsonify
 from PIL import Image, ImageOps
 from io import BytesIO
 from rembg import remove
@@ -112,13 +113,19 @@ def process():
                 append_images=pages[1:],
             )
         output.seek(0)
+        pdf_b64 = base64.b64encode(output.getvalue()).decode('utf-8')
 
-        return send_file(
-            output,
-            mimetype="application/pdf",
-            as_attachment=True,
-            download_name="passport-sheet.pdf",
-        )
+        images_b64 = []
+        for p_img, copies in passport_images:
+            img_io = BytesIO()
+            p_img.save(img_io, format="PNG")
+            img_io.seek(0)
+            images_b64.append(base64.b64encode(img_io.getvalue()).decode('utf-8'))
+
+        return jsonify({
+            "pdf": pdf_b64,
+            "images": images_b64
+        })
     except Exception as e:
         import traceback
         err_str = traceback.format_exc()
