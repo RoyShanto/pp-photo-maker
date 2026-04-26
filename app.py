@@ -2,21 +2,10 @@ from flask import Flask, request, render_template, send_file
 from PIL import Image, ImageOps
 from io import BytesIO
 from dotenv import load_dotenv
-import requests
-import cloudinary
-import cloudinary.uploader
-import cloudinary.utils
+from rembg import remove
 import os
 
 app = Flask(__name__)
-
-REMOVE_BG_API_KEY = os.getenv("REMOVE_BG_API_KEY")
-
-cloudinary.config(
-    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
-    api_key=os.getenv("CLOUDINARY_API_KEY"),
-    api_secret=os.getenv("CLOUDINARY_API_SECRET"),
-)
 
 
 @app.route("/")
@@ -26,27 +15,13 @@ def index():
 
 def process_single_image(input_image_bytes):
     """Remove background, enhance, and return a ready-to-paste passport PIL image."""
-    # Step 1: Background removal
-    response = requests.post(
-        "https://api.remove.bg/v1.0/removebg",
-        files={"image_file": input_image_bytes},
-        data={"size": "auto"},
-        headers={"X-Api-Key": REMOVE_BG_API_KEY},
-    )
+    # Step 1: Background removal via local rembg
+    try:
+        output_bytes = remove(input_image_bytes)
+    except Exception as e:
+        raise ValueError(f"bg_removal_failed:{str(e)}")
 
-    if response.status_code != 200:
-        try:
-            error_info = response.json()
-            if error_info.get("errors"):
-                error_code = error_info["errors"][0].get("code", "unknown_error")
-                raise ValueError(f"bg_removal_failed:{error_code}:{response.status_code}")
-        except ValueError:
-            raise
-        except Exception:
-            pass
-        raise ValueError(f"bg_removal_failed:unknown:{response.status_code}")
-
-    bg_removed = BytesIO(response.content)
+    bg_removed = BytesIO(output_bytes)
     img = Image.open(bg_removed)
 
     if img.mode in ("RGBA", "LA"):
@@ -56,38 +31,7 @@ def process_single_image(input_image_bytes):
     else:
         processed_img = img.convert("RGB")
 
-    # Step 2: Upload to Cloudinary
-    buffer = BytesIO()
-    processed_img.save(buffer, format="PNG")
-    buffer.seek(0)
-    upload_result = cloudinary.uploader.upload(buffer, resource_type="image")
-    image_url = upload_result.get("secure_url")
-    public_id = upload_result.get("public_id")
-
-    if not image_url:
-        raise ValueError("cloudinary_upload_failed")
-
-    # Step 3: Enhance via Cloudinary AI
-    enhanced_url = cloudinary.utils.cloudinary_url(
-        public_id,
-        transformation=[
-            {"effect": "gen_restore"},
-            {"quality": "auto"},
-            {"fetch_format": "auto"},
-        ],
-    )[0]
-
-    enhanced_img_data = requests.get(enhanced_url).content
-    img = Image.open(BytesIO(enhanced_img_data))
-
-    if img.mode in ("RGBA", "LA"):
-        background = Image.new("RGB", img.size, (255, 255, 255))
-        background.paste(img, mask=img.split()[-1])
-        passport_img = background
-    else:
-        passport_img = img.convert("RGB")
-
-    return passport_img
+    return processed_img
 
 
 @app.route("/process", methods=["POST"])
@@ -139,13 +83,8 @@ def process():
             passport_images.append((img, copies))
         except ValueError as e:
             err_str = str(e)
-            if "410" in err_str or "face" in err_str.lower():
-                return {"error": "face_detection_failed"}, 410
-            elif "429" in err_str or "quota" in err_str.lower() or "402" in err_str or "credits" in err_str.lower():
-                return {"error": "quota_exceeded"}, 429
-            else:
-                print(err_str)
-                return {"error": err_str}, 500
+            print(err_str)
+            return {"error": err_str}, 500
                 
 
     paste_w = passport_width + 2 * border

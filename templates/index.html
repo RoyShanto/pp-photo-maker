@@ -290,11 +290,13 @@
       let added = 0;
       Array.from(files).forEach(file => {
         if (!validTypes.includes(file.type)) return;
+        const url = URL.createObjectURL(file);
         const photo = {
           id: nextId++,
           originalFile: file,
           croppedFile: null,
-          previewUrl: URL.createObjectURL(file),
+          previewUrl: url,
+          originalUrl: url,
           copies: 6
         };
         photos.push(photo);
@@ -329,15 +331,21 @@
       const photo = photos.find(p => p.id === id);
       if (!photo) return;
       pendingCropId = id;
-      cropModalImage.src = photo.previewUrl;
       cropperModal.classList.remove('hidden');
-      if (activeCropper) activeCropper.destroy();
-      activeCropper = new Cropper(cropModalImage, {
-        aspectRatio: 384 / 472,
-        viewMode: 1,
-        dragMode: 'move',
-        autoCropArea: 1,
-      });
+      
+      const urlToCrop = photo.originalUrl || photo.previewUrl;
+      
+      if (activeCropper) {
+        activeCropper.replace(urlToCrop);
+      } else {
+        cropModalImage.src = urlToCrop;
+        activeCropper = new Cropper(cropModalImage, {
+          aspectRatio: 384 / 472,
+          viewMode: 1,
+          dragMode: 'move',
+          autoCropArea: 1,
+        });
+      }
     }
 
     confirmCropBtn.addEventListener('click', () => {
